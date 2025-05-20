@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Romeo Mailman Runner</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Courier New', monospace;
+            background-color: #f0f0f0;
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: linear-gradient(#87ceeb, #e0cda9);
+        }
+
+        .lane {
+            position: absolute;
+            width: 33.33%;
+            height: 100%;
+            top: 0;
+            border-left: 1px dashed #999;
+        }
+
+        .runner,
+        .obstacle,
+        .drink {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            user-select: none;
+            background: none;
+        }
+
+        .runner {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            bottom: 20px;
+            transition: left 0.18s cubic-bezier(.4, 1.6, .4, 1);
+            /* sliding animation */
+        }
+
+        .obstacle,
+        .drink {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            top: -50px;
+        }
+
+        #energyBar {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            width: 200px;
+            height: 20px;
+            border: 2px solid #333;
+            background: #ddd;
+        }
+
+        #energyLabel {
+            position: absolute;
+            top: 0;
+            left: 8px;
+            font-size: 1rem;
+            color: #333;
+            font-family: 'Courier New', monospace;
+            z-index: 2;
+            pointer-events: none;
+            line-height: 20px;
+            height: 20px;
+        }
+
+        #energyFill {
+            height: 100%;
+            width: 100%;
+            background: green;
+            z-index: 1;
+        }
+
+        #healthBar {
+            position: absolute;
+            top: 50px;
+            left: 10px;
+            width: 200px;
+            height: 20px;
+            border: 2px solid #333;
+            background: #ddd;
+        }
+
+        #healthLabel {
+            position: absolute;
+            top: 0;
+            left: 8px;
+            font-size: 1rem;
+            color: #333;
+            font-family: 'Courier New', monospace;
+            z-index: 2;
+            pointer-events: none;
+            line-height: 20px;
+            height: 20px;
+        }
+
+        #healthFill {
+            height: 100%;
+            width: 100%;
+            background: #e74c3c;
+            transition: width 0.2s;
+            z-index: 1;
+        }
+
+        #darkOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0);
+            pointer-events: none;
+            z-index: 100;
+            transition: background 0.2s;
+        }
+
+        #redFlash {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(255, 0, 0, 0);
+            pointer-events: none;
+            z-index: 200;
+            transition: background 0.2s;
+        }
+
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 2rem;
+            color: red;
+            display: none;
+            text-align: center;
+            z-index: 300;
+        }
+
+        #retryBtn {
+            padding: 8px 24px;
+            border: none;
+            background: #333;
+            color: #fff;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 20px;
+            font-size: 1.2rem;
+            display: none;
+            z-index: 301;
+            position: relative;
+        }
+
+        #dialogBox {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            background: #ffffff;
+            border-top: 3px solid #333;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 1rem;
+            color: #000;
+            display: none;
+        }
+
+        #distanceCounter {
+            position: absolute;
+            top: 90px;
+            left: 10px;
+            font-size: 1.1rem;
+            color: #222;
+            font-family: 'Courier New', monospace;
+            background: rgba(255, 255, 255, 0.7);
+            padding: 2px 10px;
+            border-radius: 6px;
+            z-index: 10;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="gameContainer">
+        <div class="lane" style="left: 33.33%"></div>
+        <div class="lane" style="left: 66.66%"></div>
+        <div id="runner" class="runner"></div>
+        <div id="energyBar">
+            <div id="energyFill"></div>
+            <div id="energyLabel">Energy</div>
+        </div>
+        <div id="healthBar">
+            <div id="healthFill"></div>
+            <div id="healthLabel">Health</div>
+        </div>
+        <div id="distanceCounter">0 m</div>
+        <div id="darkOverlay"></div>
+        <div id="redFlash"></div>
+        <div id="gameOver">
+            <span id="gameOverMsg">You fell asleep!<br>Romeo never got the letter...</span><br>
+            <button id="retryBtn">Retry</button>
+        </div>
+        <div id="dialogBox"></div>
+    </div>
+
+    <script>
+        const game = document.getElementById('gameContainer');
+        const runner = document.getElementById('runner');
+        const energyFill = document.getElementById('energyFill');
+        const healthFill = document.getElementById('healthFill');
+        const gameOverText = document.getElementById('gameOver');
+        const dialogBox = document.getElementById('dialogBox');
+        const darkOverlay = document.getElementById('darkOverlay');
+        const redFlash = document.getElementById('redFlash');
+        const retryBtn = document.getElementById('retryBtn');
+        const distanceCounter = document.getElementById('distanceCounter');
+        const gameOverMsg = document.getElementById('gameOverMsg');
+
+        const lanes = [0, 1, 2];
+        let currentLane = 1;
+        let energy = 100;
+        let health = 100;
+        let gameRunning = false;
+        let healthRegenActive = true;
+        let healthRegenTimeout = null;
+        let healthRegenInterval = null;
+
+        const laneWidth = window.innerWidth / 3;
+        runner.style.left = laneWidth * currentLane + laneWidth / 2 - 30 + 'px';
+
+        // New intro and tutorial dialog
+        const introDialog = [
+            "A long time ago, in fair Verona, two star-crossed lovers dared to dream of a future together.",
+            "But fate is cruel, and only a single letter stands between love and tragedy.",
+            "You are the Friar's trusted courier, the only hope for Romeo and Juliet.",
+            "Deliver the letter to Romeo in Mantua before it's too late!",
+            "TUTORIAL:",
+            "Use the LEFT and RIGHT arrow keys to move between lanes.",
+            "Avoid obstacles like 🚧, 🌵, and 🌳. Hitting them will hurt your health!",
+            "Collect drinks for energy: 🥤 (soda), 🧃 (juice), 🧋 (tea), 🥛 (milk), and ☕ (coffee).",
+            "Coffee (☕) gives you full energy, 10 seconds of invincibility, and super speed!",
+            "If your energy runs out, you fall asleep. If your health runs out, you collapse.",
+            "How far can you go? Click to begin your run!"
+        ];
+
+        function showDialog(lines, callback) {
+            let index = 0;
+            dialogBox.style.display = 'block';
+            dialogBox.textContent = lines[index];
+
+            function nextLine() {
+                index++;
+                if (index < lines.length) {
+                    dialogBox.textContent = lines[index];
+                } else {
+                    dialogBox.style.display = 'none';
+                    dialogBox.removeEventListener('click', nextLine);
+                    callback();
+                }
+            }
+
+            dialogBox.addEventListener('click', nextLine);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (!gameRunning) return;
+            if (e.key === 'ArrowLeft' && currentLane > 0) {
+                currentLane--;
+            } else if (e.key === 'ArrowRight' && currentLane < 2) {
+                currentLane++;
+            }
+            runner.style.left = laneWidth * currentLane + laneWidth / 2 - 30 + 'px';
+        });
+
+        // Set runner emoji
+        runner.textContent = "🏃‍♂️";
+
+        function resetHealthRegen() {
+            healthRegenActive = false;
+            if (healthRegenTimeout) clearTimeout(healthRegenTimeout);
+            if (healthRegenInterval) clearInterval(healthRegenInterval);
+            healthRegenTimeout = setTimeout(() => {
+                healthRegenActive = true;
+                let rate = 1;
+                healthRegenInterval = setInterval(() => {
+                    if (!gameRunning || health >= 100) return;
+                    if (health < 100 && healthRegenActive) {
+                        health = Math.min(100, health + rate * 0.08); // 1% per second at first (interval 80ms)
+                        healthFill.style.width = health + '%';
+                        if (rate < 4) rate += 0.01; // ramp up to 4%/sec
+                    }
+                }, 80);
+            }, 5000);
+        }
+
+        function flashRed() {
+            redFlash.style.background = 'rgba(255,0,0,0.5)';
+            setTimeout(() => {
+                redFlash.style.background = 'rgba(255,0,0,0)';
+            }, 200);
+        }
+
+        function resetGame() {
+            // Remove all obstacles and drinks
+            document.querySelectorAll('.obstacle, .drink').forEach(e => e.remove());
+            energy = 100;
+            health = 100;
+            currentLane = 1;
+            runner.style.left = laneWidth * currentLane + laneWidth / 2 - 30 + 'px';
+            energyFill.style.width = '100%';
+            healthFill.style.width = '100%';
+            gameOverText.style.display = 'none';
+            retryBtn.style.display = 'none';
+            darkOverlay.style.background = 'rgba(0,0,0,0)';
+            redFlash.style.background = 'rgba(255,0,0,0)';
+            gameRunning = true;
+            meters = 0;
+            distanceCounter.textContent = "0 m";
+            // Reset regen
+            if (healthRegenTimeout) clearTimeout(healthRegenTimeout);
+            if (healthRegenInterval) clearInterval(healthRegenInterval);
+            healthRegenActive = true;
+            startIntervals();
+        }
+
+        retryBtn.onclick = resetGame;
+
+        // Game speed and difficulty variables
+        let baseSpawnInterval = 900; // ms, start slow
+        let minSpawnInterval = 220;  // ms, max speed
+        let spawnIntervalId, energyIntervalId, healthRegenIntervalId, distanceIntervalId;
+        let spawnInterval = baseSpawnInterval;
+        let speedIncreaseRate = 0.995; // how quickly spawnInterval decreases
+        let meters = 0;
+        let metersPerTick = 1.5; // meters per 80ms tick, increases with speed
+        let gameTick = 80; // ms, for energy/distance update
+        let maxMeters = 9999; // for display
+
+        let coffeeSuperSpeedActive = false;
+        let coffeeSuperSpeedTimeout = null;
+        let coffeeOldSpawnInterval = null;
+
+        // Difficulty scaling
+        function getDrinkChance(distance) {
+            // Starts at 0.3, drops to 0.05 at 2000m, then 0 at 3000m
+            if (distance > 3000) return 0;
+            if (distance > 2000) return 0.05 - 0.05 * ((distance - 2000) / 1000);
+            return Math.max(0.05, 0.3 - 0.25 * (distance / 2000));
+        }
+        function getSpawnInterval(distance) {
+            // Linear decrease to minSpawnInterval by 2000m
+            if (distance > 2000) return minSpawnInterval;
+            return baseSpawnInterval - ((baseSpawnInterval - minSpawnInterval) * (distance / 2000));
+        }
+        function getMetersPerTick(distance) {
+            // Slightly increase meters per tick as speed increases
+            return 1.5 + 1.5 * Math.min(1, distance / 2000);
+        }
+
+        function updateDistance() {
+            if (!gameRunning) return;
+            metersPerTick = getMetersPerTick(meters);
+            meters += metersPerTick;
+            if (meters > maxMeters) meters = maxMeters;
+            distanceCounter.textContent = Math.floor(meters) + " m";
+        }
+
+        function updateSpawnSpeed() {
+            // Called after each spawn to update interval
+            spawnInterval = getSpawnInterval(meters);
+            clearInterval(spawnIntervalId);
+            spawnIntervalId = setInterval(spawnItem, spawnInterval);
+        }
+
+        function spawnItem() {
+            if (!gameRunning) return;
+            const item = document.createElement('div');
+            // Add more obstacle and drink types
+            const drinkChance = getDrinkChance(meters);
+            const obstacleTypes = [
+                { class: 'obstacle', emoji: "🚧" },
+                { class: 'obstacle', emoji: "🌵" },
+                { class: 'obstacle', emoji: "🌳" },
+                { class: 'obstacle', emoji: "🌲" },
+                { class: 'obstacle', emoji: "🌿" },
+                { class: 'obstacle', emoji: "🌻" },
+                { class: 'obstacle', emoji: "🌴" },
+                { class: 'obstacle', emoji: "🌾" }
+            ];
+            // Drink types: emoji and energy recovery
+            const drinkTypes = [
+                { class: 'drink', emoji: "🥤", energy: 33 }, // soda (30 * 1.1)
+                { class: 'drink', emoji: "☕", energy: 100 }, // coffee: full recovery
+                { class: 'drink', emoji: "🧃", energy: 22 }, // juice (20 * 1.1)
+                { class: 'drink', emoji: "🧋", energy: 44 }, // boba/tea (40 * 1.1)
+                { class: 'drink', emoji: "🥛", energy: 27.5 }  // milk (25 * 1.1)
+            ];
+            let isDrink = false;
+            let emoji = "🚧";
+            let energyGain = 0;
+            let isCoffee = false;
+            if (Math.random() < drinkChance) {
+                isDrink = true;
+                // Randomly pick a drink type
+                const drink = drinkTypes[Math.floor(Math.random() * drinkTypes.length)];
+                item.className = drink.class;
+                emoji = drink.emoji;
+                energyGain = drink.energy;
+                if (emoji === "☕") isCoffee = true;
+            } else {
+                // Randomly pick an obstacle type
+                const obstacle = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
+                item.className = obstacle.class;
+                emoji = obstacle.emoji;
+            }
+            item.textContent = emoji;
+            const lane = lanes[Math.floor(Math.random() * 3)];
+            item.style.left = laneWidth * lane + laneWidth / 2 - 20 + 'px';
+            game.appendChild(item);
+
+            let topPos = -50;
+            let hit = false;
+            // Speed up falling as spawnInterval decreases
+            let fallSpeed = 10 + 10 * ((baseSpawnInterval - spawnInterval) / (baseSpawnInterval - minSpawnInterval));
+            const interval = setInterval(() => {
+                if (!gameRunning) return clearInterval(interval);
+                topPos += fallSpeed;
+                item.style.top = topPos + 'px';
+
+                if (topPos > window.innerHeight) {
+                    game.removeChild(item);
+                    clearInterval(interval);
+                } else if (
+                    !hit &&
+                    Math.abs(topPos - (window.innerHeight - 80)) < 20 &&
+                    lane === currentLane
+                ) {
+                    if (isDrink) {
+                        if (isCoffee) {
+                            energy = 100;
+                            // Grant invincibility for 10 seconds
+                            window.__mailman_invincible = true;
+                            window.__mailman_invincible_timer && clearTimeout(window.__mailman_invincible_timer);
+                            window.__mailman_invincible_timer = setTimeout(() => {
+                                window.__mailman_invincible = false;
+                            }, 10000);
+
+                            // Grant super speed for 10 seconds
+                            if (!coffeeSuperSpeedActive) {
+                                coffeeSuperSpeedActive = true;
+                                coffeeOldSpawnInterval = spawnInterval;
+                                spawnInterval = Math.max(minSpawnInterval / 2, minSpawnInterval * 0.5); // much faster
+                                clearInterval(spawnIntervalId);
+                                spawnIntervalId = setInterval(spawnItem, spawnInterval);
+                                coffeeSuperSpeedTimeout = setTimeout(() => {
+                                    coffeeSuperSpeedActive = false;
+                                    // Restore spawnInterval based on distance
+                                    spawnInterval = getSpawnInterval(meters);
+                                    clearInterval(spawnIntervalId);
+                                    spawnIntervalId = setInterval(spawnItem, spawnInterval);
+                                }, 10000);
+                            } else {
+                                // If already active, reset timer
+                                clearTimeout(coffeeSuperSpeedTimeout);
+                                coffeeSuperSpeedTimeout = setTimeout(() => {
+                                    coffeeSuperSpeedActive = false;
+                                    spawnInterval = getSpawnInterval(meters);
+                                    clearInterval(spawnIntervalId);
+                                    spawnIntervalId = setInterval(spawnItem, spawnInterval);
+                                }, 10000);
+                            }
+                        } else {
+                            energy = Math.min(100, energy + energyGain);
+                        }
+                        game.removeChild(item);
+                        clearInterval(interval);
+                    } else {
+                        // Obstacle hit
+                        // If invincible, ignore obstacle
+                        if (window.__mailman_invincible) {
+                            game.removeChild(item);
+                            clearInterval(interval);
+                            return;
+                        }
+                        hit = true;
+                        health = Math.max(0, health - 25);
+                        healthFill.style.width = health + '%';
+                        flashRed();
+                        // Stop health regen for 5s and then ramp up
+                        healthRegenActive = false;
+                        if (healthRegenTimeout) clearTimeout(healthRegenTimeout);
+                        if (healthRegenInterval) clearInterval(healthRegenInterval);
+                        healthRegenTimeout = setTimeout(() => {
+                            healthRegenActive = true;
+                            let rate = 1;
+                            healthRegenInterval = setInterval(() => {
+                                if (!gameRunning || health >= 100) return;
+                                if (health < 100 && healthRegenActive) {
+                                    health = Math.min(100, health + rate * 0.08);
+                                    healthFill.style.width = health + '%';
+                                    if (rate < 4) rate += 0.01;
+                                }
+                            }, 80);
+                        }, 5000);
+                        setTimeout(() => {
+                            if (item.parentNode) item.parentNode.removeChild(item);
+                        }, 100);
+                        clearInterval(interval);
+                        if (health <= 0) {
+                            gameRunning = false;
+                            gameOverMsg.innerHTML = "You were injured!<br>Romeo never got the letter...";
+                            gameOverText.style.display = 'block';
+                            retryBtn.style.display = 'inline-block';
+                        }
+                    }
+                }
+            }, 18);
+            updateSpawnSpeed();
+        }
+
+        // Patch updateEnergy to skip energy loss if invincible
+        function updateEnergy() {
+            if (!gameRunning) return;
+            if (window.__mailman_invincible) {
+                // No energy loss during invincibility
+                energyFill.style.width = energy + '%';
+            } else {
+                energy -= 0.7;
+                energyFill.style.width = energy + '%';
+            }
+
+            // Darken screen as energy drops below 20%
+            if (energy < 20 && energy > 0) {
+                const opacity = 0.7 * (1 - energy / 20);
+                darkOverlay.style.background = `rgba(0,0,0,${opacity})`;
+            } else {
+                darkOverlay.style.background = 'rgba(0,0,0,0)';
+            }
+
+            if (energy <= 0) {
+                gameRunning = false;
+                gameOverMsg.innerHTML = "You fell asleep!<br>Romeo never got the letter...";
+                gameOverText.style.display = 'block';
+                retryBtn.style.display = 'inline-block';
+            }
+        }
+
+        function startIntervals() {
+            if (spawnIntervalId) clearInterval(spawnIntervalId);
+            if (energyIntervalId) clearInterval(energyIntervalId);
+            if (healthRegenIntervalId) clearInterval(healthRegenIntervalId);
+            if (distanceIntervalId) clearInterval(distanceIntervalId);
+
+            spawnInterval = baseSpawnInterval;
+            spawnIntervalId = setInterval(spawnItem, spawnInterval);
+            energyIntervalId = setInterval(updateEnergy, gameTick);
+            distanceIntervalId = setInterval(updateDistance, gameTick);
+
+            // Health regen
+            healthRegenActive = true;
+            let rate = 1;
+            healthRegenIntervalId = setInterval(() => {
+                if (!gameRunning || health >= 100) return;
+                if (health < 100 && healthRegenActive) {
+                    health = Math.min(100, health + rate * 0.08);
+                    healthFill.style.width = health + '%';
+                    if (rate < 4) rate += 0.01;
+                }
+            }, 80);
+        }
+
+        function startGame() {
+            gameRunning = true;
+            health = 100;
+            healthFill.style.width = '100%';
+            retryBtn.style.display = 'none';
+            meters = 0;
+            distanceCounter.textContent = "0 m";
+            startIntervals();
+        }
+
+        window.onload = () => {
+            // Setup health bar fill on load
+            document.getElementById('healthFill').style.width = '100%';
+            showDialog(introDialog, startGame);
+        };
+    </script>
+</body>
+
+</html>
